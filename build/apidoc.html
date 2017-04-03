@@ -1,0 +1,685 @@
+<div class="apidocDiv">
+<style>
+/*csslint
+*/
+.apidocDiv {
+    background: #fff;
+    font-family: Arial, Helvetica, sans-serif;
+}
+.apidocDiv a[href] {
+    color: #33f;
+    font-weight: bold;
+    text-decoration: none;
+}
+.apidocDiv a[href]:hover {
+    text-decoration: underline;
+}
+.apidocCodeCommentSpan {
+    background: #bbf;
+    color: #000;
+    display: block;
+}
+.apidocCodeKeywordSpan {
+    color: #d00;
+    font-weight: bold;
+}
+.apidocCodePre {
+    background: #eef;
+    border: 1px solid;
+    color: #777;
+    padding: 5px;
+    white-space: pre-wrap;
+}
+.apidocFooterDiv {
+    margin-top: 20px;
+    text-align: center;
+}
+.apidocModuleLi {
+    margin-top: 10px;
+}
+.apidocSectionDiv {
+    border-top: 1px solid;
+    margin-top: 20px;
+}
+.apidocSignatureSpan {
+    color: #777;
+    font-weight: bold;
+}
+</style>
+<h1>api documentation for
+    <a
+
+        href="https://github.com/bluesmoon/node-geoip"
+
+    >geoip-lite (v1.2.0)</a>
+</h1>
+<h4>A light weight native JavaScript implementation of GeoIP API from MaxMind</h4>
+<div class="apidocSectionDiv"><a
+    href="#apidoc.tableOfContents"
+    id="apidoc.tableOfContents"
+><h1>table of contents</h1></a><ol>
+
+    <li class="apidocModuleLi"><a href="#apidoc.module.geoip-lite">module geoip-lite</a><ol>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.geoip-lite.cmp">
+            function <span class="apidocSignatureSpan">geoip-lite.</span>cmp
+            <span class="apidocSignatureSpan">(a, b)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.geoip-lite.lookup">
+            function <span class="apidocSignatureSpan">geoip-lite.</span>lookup
+            <span class="apidocSignatureSpan">(ip)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.geoip-lite.pretty">
+            function <span class="apidocSignatureSpan">geoip-lite.</span>pretty
+            <span class="apidocSignatureSpan">(n)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.geoip-lite.startWatchingDataUpdate">
+            function <span class="apidocSignatureSpan">geoip-lite.</span>startWatchingDataUpdate
+            <span class="apidocSignatureSpan">(callback)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.geoip-lite.stopWatchingDataUpdate">
+            function <span class="apidocSignatureSpan">geoip-lite.</span>stopWatchingDataUpdate
+            <span class="apidocSignatureSpan">()</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <span class="apidocSignatureSpan">object <span class="apidocSignatureSpan">geoip-lite.</span>fsWatcher</span>
+
+        </li>
+
+        <li>
+
+            <span class="apidocSignatureSpan">object <span class="apidocSignatureSpan">geoip-lite.</span>utils</span>
+
+        </li>
+
+    </ol></li>
+
+    <li class="apidocModuleLi"><a href="#apidoc.module.geoip-lite.fsWatcher">module geoip-lite.fsWatcher</a><ol>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.geoip-lite.fsWatcher.makeFsWatchFilter">
+            function <span class="apidocSignatureSpan">geoip-lite.fsWatcher.</span>makeFsWatchFilter
+            <span class="apidocSignatureSpan">(name, directory, filename, cooldownDelay, callback)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.geoip-lite.fsWatcher.stopWatching">
+            function <span class="apidocSignatureSpan">geoip-lite.fsWatcher.</span>stopWatching
+            <span class="apidocSignatureSpan">(name)</span>
+            </a>
+
+        </li>
+
+    </ol></li>
+
+    <li class="apidocModuleLi"><a href="#apidoc.module.geoip-lite.utils">module geoip-lite.utils</a><ol>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.geoip-lite.utils.aton4">
+            function <span class="apidocSignatureSpan">geoip-lite.utils.</span>aton4
+            <span class="apidocSignatureSpan">(a)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.geoip-lite.utils.aton6">
+            function <span class="apidocSignatureSpan">geoip-lite.utils.</span>aton6
+            <span class="apidocSignatureSpan">(a)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.geoip-lite.utils.cmp">
+            function <span class="apidocSignatureSpan">geoip-lite.utils.</span>cmp
+            <span class="apidocSignatureSpan">(a, b)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.geoip-lite.utils.cmp6">
+            function <span class="apidocSignatureSpan">geoip-lite.utils.</span>cmp6
+            <span class="apidocSignatureSpan">(a, b)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.geoip-lite.utils.isPrivateIP">
+            function <span class="apidocSignatureSpan">geoip-lite.utils.</span>isPrivateIP
+            <span class="apidocSignatureSpan">(addr)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.geoip-lite.utils.ntoa4">
+            function <span class="apidocSignatureSpan">geoip-lite.utils.</span>ntoa4
+            <span class="apidocSignatureSpan">(n)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.geoip-lite.utils.ntoa6">
+            function <span class="apidocSignatureSpan">geoip-lite.utils.</span>ntoa6
+            <span class="apidocSignatureSpan">(n)</span>
+            </a>
+
+        </li>
+
+    </ol></li>
+
+</ol></div>
+
+<div class="apidocSectionDiv">
+<h1><a href="#apidoc.module.geoip-lite" id="apidoc.module.geoip-lite">module geoip-lite</a></h1>
+
+
+    <h2>
+        <a href="#apidoc.element.geoip-lite.cmp" id="apidoc.element.geoip-lite.cmp">
+        function <span class="apidocSignatureSpan">geoip-lite.</span>cmp
+        <span class="apidocSignatureSpan">(a, b)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">cmp = function (a, b) {
+  if (typeof a === &#x27;number&#x27; &#x26;&#x26; typeof b === &#x27;number&#x27;) {
+    return (a &#x3c; b ? -1 : (a &#x3e; b ? 1 : 0));
+  }
+
+  if (a instanceof Array &#x26;&#x26; b instanceof Array) {
+    return this.cmp6(a, b);
+  }
+
+  return null;
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.geoip-lite.lookup" id="apidoc.element.geoip-lite.lookup">
+        function <span class="apidocSignatureSpan">geoip-lite.</span>lookup
+        <span class="apidocSignatureSpan">(ip)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">lookup = function (ip) {
+		if (!ip) {
+			return null;
+		} else if (typeof ip === &#x27;number&#x27;) {
+			return lookup4(ip);
+		} else if (net.isIP(ip) === 4) {
+			return lookup4(utils.aton4(ip));
+		} else if (net.isIP(ip) === 6) {
+			var ipv4 = get4mapped(ip);
+			if (ipv4) {
+				return lookup4(utils.aton4(ipv4));
+			} else {
+				return lookup6(utils.aton6(ip));
+			}
+		}
+
+		return null;
+	}</pre></li>
+    <li>example usage<pre class="apidocCodePre">...
+synopsis
+--------
+
+```javascript
+var geoip = require(&#x27;geoip-lite&#x27;);
+
+var ip = &#x22;207.97.227.239&#x22;;
+var geo = geoip.<span class="apidocCodeKeywordSpan">lookup</span>(ip);
+
+console.log(geo);
+{ range: [ 3479297920, 3479301339 ],
+country: &#x27;US&#x27;,
+region: &#x27;TX&#x27;,
+city: &#x27;San Antonio&#x27;,
+ll: [ 29.4889, -98.3987 ],
+...</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.geoip-lite.pretty" id="apidoc.element.geoip-lite.pretty">
+        function <span class="apidocSignatureSpan">geoip-lite.</span>pretty
+        <span class="apidocSignatureSpan">(n)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">pretty = function (n) {
+		if (typeof n === &#x27;string&#x27;) {
+			return n;
+		} else if (typeof n === &#x27;number&#x27;) {
+			return utils.ntoa4(n);
+		} else if (n instanceof Array) {
+			return utils.ntoa6(n);
+		}
+
+		return n;
+	}</pre></li>
+    <li>example usage<pre class="apidocCodePre">...
+   ll: [&#x3c;latitude&#x3e;, &#x3c;longitude&#x3e;], // The latitude and longitude of the city
+   metro: &#x3c;metro code&#x3e;,           // Metro code
+   zip: &#x3c;postal code&#x3e;             // Postal code (IPv4 only)
+}
+```
+
+The actual values for the `range` array depend on whether the IP is IPv4 or IPv6 and should be
+considered internal to `geoip-lite`.  To get a human readable format, pass them to `geoip.<span class="apidocCodeKeywordSpan">pretty
+</span>()`
+
+If the IP address was not found, the `lookup` returns `null`
+
+### Pretty printing an IP address ###
+
+If you have a 32 bit unsigned integer, or a number returned as part of the `range` array from the `lookup` method,
+the `pretty` method can be used to turn it into a human readable string.
+...</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.geoip-lite.startWatchingDataUpdate" id="apidoc.element.geoip-lite.startWatchingDataUpdate">
+        function <span class="apidocSignatureSpan">geoip-lite.</span>startWatchingDataUpdate
+        <span class="apidocSignatureSpan">(callback)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">startWatchingDataUpdate = function (callback) {
+		fsWatcher.makeFsWatchFilter(watcherName, geodatadir, 60*1000, function () {
+			//Reload data
+			async.series([
+				function (cb) {
+					preload(cb);
+				},
+				function (cb) {
+					preload6(cb);
+				}
+			], callback);
+		});
+	}</pre></li>
+    <li>example usage<pre class="apidocCodePre">...
+
+### Start and stop watching for data updates ###
+
+If you have a server running `geoip-lite`, and you want to update its geo data without a restart, you can enable
+the data watcher to automatically refresh in-memory geo data when a file changes in the data directory.
+
+```javascript
+geoip.<span class="apidocCodeKeywordSpan">startWatchingDataUpdate</span>();
+```
+
+This tool can be used with `npm run-script updatedb` to periodically update geo data on a running server.
+
+
+Built-in Updater
+----------------
+...</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.geoip-lite.stopWatchingDataUpdate" id="apidoc.element.geoip-lite.stopWatchingDataUpdate">
+        function <span class="apidocSignatureSpan">geoip-lite.</span>stopWatchingDataUpdate
+        <span class="apidocSignatureSpan">()</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">stopWatchingDataUpdate = function () {
+		fsWatcher.stopWatching(watcherName);
+	}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+
+
+
+</div>
+
+<div class="apidocSectionDiv">
+<h1><a href="#apidoc.module.geoip-lite.fsWatcher" id="apidoc.module.geoip-lite.fsWatcher">module geoip-lite.fsWatcher</a></h1>
+
+
+    <h2>
+        <a href="#apidoc.element.geoip-lite.fsWatcher.makeFsWatchFilter" id="apidoc.element.geoip-lite.fsWatcher.makeFsWatchFilter">
+        function <span class="apidocSignatureSpan">geoip-lite.fsWatcher.</span>makeFsWatchFilter
+        <span class="apidocSignatureSpan">(name, directory, filename, cooldownDelay, callback)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">function makeFsWatchFilter(name, directory, filename, cooldownDelay, callback) {
+	var cooldownId = null;
+
+	//Delete the cooldownId and callback the outer function
+	function timeoutCallback() {
+		cooldownId = null;
+		callback();
+	}
+
+	//This function is called when there is a change in the data directory
+	//It sets a timer to wait for the change to be completed
+	function onWatchEvent(event, changedFile) {
+		var filePath = path.join(directory, changedFile);
+
+		if (!filename || filename === changedFile) {
+			fs.exists(filePath, function onExists(exists) {
+				if (!exists) {
+					// if the changed file no longer exists, it was a deletion.
+					// we ignore deleted files
+					return;
+				}
+
+				//At this point, a new file system activity has been detected,
+				//We have to wait for file transfert to be finished before moving on.
+
+				//If a cooldownId already exists, we delete it
+				if (cooldownId !== null) {
+					clearTimeout(cooldownId);
+					cooldownId = null;
+				}
+
+				//Once the cooldownDelay has passed, the timeoutCallback function will be called
+				cooldownId = setTimeout(timeoutCallback, cooldownDelay);
+			});
+		}
+	}
+
+	//Manage the case where filename is missing (because it&#x27;s optionnal)
+	if (typeof cooldownDelay === &#x27;function&#x27;) {
+		callback = cooldownDelay;
+		cooldownDelay = filename;
+		filename = null;
+	}
+
+	if (FSWatcher[name]) {
+		stopWatching(name);
+	}
+
+	FSWatcher[name] = fs.watch(directory, onWatchEvent);
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.geoip-lite.fsWatcher.stopWatching" id="apidoc.element.geoip-lite.fsWatcher.stopWatching">
+        function <span class="apidocSignatureSpan">geoip-lite.fsWatcher.</span>stopWatching
+        <span class="apidocSignatureSpan">(name)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">function stopWatching(name) {
+	FSWatcher[name].close();
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+</div>
+
+<div class="apidocSectionDiv">
+<h1><a href="#apidoc.module.geoip-lite.utils" id="apidoc.module.geoip-lite.utils">module geoip-lite.utils</a></h1>
+
+
+    <h2>
+        <a href="#apidoc.element.geoip-lite.utils.aton4" id="apidoc.element.geoip-lite.utils.aton4">
+        function <span class="apidocSignatureSpan">geoip-lite.utils.</span>aton4
+        <span class="apidocSignatureSpan">(a)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">aton4 = function (a) {
+  a = a.split(/\./);
+  return ((parseInt(a[0], 10)&#x3c;&#x3c;24)&#x3e;&#x3e;&#x3e;0) + ((parseInt(a[1], 10)&#x3c;&#x3c;16)&#x3e;&#x3e;&#x3e;0) + ((parseInt(a[2], 10)&#x3c;&#x3c;8)&#x3e;&#x3e;&#x3e;0) + (parseInt(a[3], 10)&#x3e;&#x3e;&#x3e;
+0);
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.geoip-lite.utils.aton6" id="apidoc.element.geoip-lite.utils.aton6">
+        function <span class="apidocSignatureSpan">geoip-lite.utils.</span>aton6
+        <span class="apidocSignatureSpan">(a)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">aton6 = function (a) {
+  a = a.replace(/&#x22;/g, &#x27;&#x27;).split(/:/);
+
+  var l = a.length - 1;
+  var i;
+
+  if (a[l] === &#x27;&#x27;) {
+    a[l] = 0;
+  }
+
+  if (l &#x3c; 7) {
+    a.length = 8;
+
+    for (i = l; i &#x3e;= 0 &#x26;&#x26; a[i] !== &#x27;&#x27;; i--) {
+      a[7-l+i] = a[i];
+    }
+  }
+
+  for (i = 0; i &#x3c; 8; i++) {
+    if (!a[i]) {
+      a[i]=0;
+    } else {
+      a[i] = parseInt(a[i], 16);
+    }
+  }
+
+  var r = [];
+  for (i = 0; i&#x3c;4; i++) {
+    r.push(((a[2*i]&#x3c;&#x3c;16) + a[2*i+1])&#x3e;&#x3e;&#x3e;0);
+  }
+
+  return r;
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">...
+		var b;
+		var bsz;
+		var i;
+
+		if (fields[0].match(/:/)) {
+			// IPv6
+			bsz = 34;
+			sip = utils.<span class="apidocCodeKeywordSpan">aton6</span>(fields[0]);
+			eip = utils.aton6(fields[1]);
+
+			b = new Buffer(bsz);
+			for (i = 0; i &#x3c; sip.length; i++) {
+				b.writeUInt32BE(sip[i], i * 4);
+			}
+...</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.geoip-lite.utils.cmp" id="apidoc.element.geoip-lite.utils.cmp">
+        function <span class="apidocSignatureSpan">geoip-lite.utils.</span>cmp
+        <span class="apidocSignatureSpan">(a, b)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">cmp = function (a, b) {
+  if (typeof a === &#x27;number&#x27; &#x26;&#x26; typeof b === &#x27;number&#x27;) {
+    return (a &#x3c; b ? -1 : (a &#x3e; b ? 1 : 0));
+  }
+
+  if (a instanceof Array &#x26;&#x26; b instanceof Array) {
+    return this.cmp6(a, b);
+  }
+
+  return null;
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.geoip-lite.utils.cmp6" id="apidoc.element.geoip-lite.utils.cmp6">
+        function <span class="apidocSignatureSpan">geoip-lite.utils.</span>cmp6
+        <span class="apidocSignatureSpan">(a, b)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">cmp6 = function (a, b) {
+  for (var ii = 0; ii &#x3c; 2; ii++) {
+    if (a[ii] &#x3c; b[ii]) {
+      return -1;
+    }
+
+    if (a[ii] &#x3e; b[ii]) {
+      return 1;
+    }
+  }
+
+  return 0;
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">...
+
+utils.cmp = function(a, b) {
+if (typeof a === &#x27;number&#x27; &#x26;&#x26; typeof b === &#x27;number&#x27;) {
+  return (a &#x3c; b ? -1 : (a &#x3e; b ? 1 : 0));
+}
+
+if (a instanceof Array &#x26;&#x26; b instanceof Array) {
+  return this.<span class="apidocCodeKeywordSpan">cmp6</span>(a, b);
+}
+
+return null;
+};
+
+utils.cmp6 = function(a, b) {
+for (var ii = 0; ii &#x3c; 2; ii++) {
+...</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.geoip-lite.utils.isPrivateIP" id="apidoc.element.geoip-lite.utils.isPrivateIP">
+        function <span class="apidocSignatureSpan">geoip-lite.utils.</span>isPrivateIP
+        <span class="apidocSignatureSpan">(addr)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">isPrivateIP = function (addr) {
+  addr = addr.toString();
+
+  return addr.match(/^10\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})/) != null ||
+    addr.match(/^192\.168\.([0-9]{1,3})\.([0-9]{1,3})/) != null ||
+    addr.match(/^172\.16\.([0-9]{1,3})\.([0-9]{1,3})/) != null ||
+    addr.match(/^127\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})/) != null ||
+    addr.match(/^169\.254\.([0-9]{1,3})\.([0-9]{1,3})/) != null ||
+    addr.match(/^fc00:/) != null || addr.match(/^fe80:/) != null;
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.geoip-lite.utils.ntoa4" id="apidoc.element.geoip-lite.utils.ntoa4">
+        function <span class="apidocSignatureSpan">geoip-lite.utils.</span>ntoa4
+        <span class="apidocSignatureSpan">(n)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">ntoa4 = function (n) {
+  n = n.toString();
+  n = &#x27;&#x27; + (n&#x3e;&#x3e;&#x3e;24&#x26;0xff) + &#x27;.&#x27; + (n&#x3e;&#x3e;&#x3e;16&#x26;0xff) + &#x27;.&#x27; + (n&#x3e;&#x3e;&#x3e;8&#x26;0xff) + &#x27;.&#x27; + (n&#x26;0xff);
+
+  return n;
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.geoip-lite.utils.ntoa6" id="apidoc.element.geoip-lite.utils.ntoa6">
+        function <span class="apidocSignatureSpan">geoip-lite.utils.</span>ntoa6
+        <span class="apidocSignatureSpan">(n)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">ntoa6 = function (n) {
+  var a = &#x22;[&#x22;;
+
+  for (var i = 0; i&#x3c;n.length; i++) {
+    a += (n[i]&#x3e;&#x3e;&#x3e;16).toString(16) + &#x27;:&#x27;;
+    a += (n[i]&#x26;0xffff).toString(16) + &#x27;:&#x27;;
+  }
+
+  a = a.replace(/:$/, &#x27;]&#x27;).replace(/:0+/g, &#x27;:&#x27;).replace(/::+/, &#x27;::&#x27;);
+
+  return a;
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+</div>
+
+<div class="apidocFooterDiv">
+    [ this document was created with
+    <a href="https://github.com/kaizhu256/node-utility2" target="_blank">utility2</a>
+    ]
+</div>
+</div>
