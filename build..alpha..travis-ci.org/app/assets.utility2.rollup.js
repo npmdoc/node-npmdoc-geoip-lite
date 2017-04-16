@@ -503,6 +503,9 @@ local.templateApidocMd = '\
              * this function will create the apidoc-element in the given module
              */
                 var element;
+                if (options.modeNoRender) {
+                    return element;
+                }
                 element = {};
                 element.moduleName = prefix.split('.');
                 // handle case where module is a function
@@ -607,10 +610,23 @@ local.templateApidocMd = '\
                 packageJson: JSON.parse(readExample('package.json'))
             });
             Object.keys(options.packageJson).forEach(function (key) {
-                if (key[0] === '_') {
+                tmp = options.packageJson[key];
+                // strip email from npmdoc documentation
+                // https://github.com/npmdoc/node-npmdoc-hpp/issues/1
+                if (tmp) {
+                    delete tmp.email;
+                    if (Array.isArray(tmp)) {
+                        tmp.forEach(function (element) {
+                            if (element) {
+                                delete element.email;
+                            }
+                        });
+                    }
+                }
+                if (key === 'readme' || key[0] === '_') {
                     delete options.packageJson[key];
-                } else if (typeof options.packageJson[key] === 'string') {
-                    options.env['npm_package_' + key] = options.packageJson[key];
+                } else if (typeof tmp === 'string') {
+                    options.env['npm_package_' + key] = tmp;
                 }
             });
             local.objectSetDefault(options, {
@@ -636,13 +652,31 @@ local.templateApidocMd = '\
             ).map(readExample));
             // init moduleMain
             try {
+                console.error('apidocCreate - requiring ' + options.dir + ' ...');
                 moduleMain = {};
-                moduleMain = options.moduleDict[options.env.npm_package_name] =
-                    options.moduleDict[options.env.npm_package_name] ||
-                    require(options.dir + (process.env.npm_package_buildNpmdocMain || ''));
-            } catch (ignore) {
+                moduleMain = options.moduleDict[options.env.npm_package_name] ||
+                    require(options.dir);
+                console.error('apidocCreate - ... required ' + options.dir);
+            } catch (errorCaught) {
+                console.error(errorCaught);
             }
-            options.moduleDict[options.env.npm_package_name] = moduleMain;
+            tmp = {};
+            // handle case where module is a function
+            if (typeof moduleMain === 'function') {
+                (function () {
+                    var toString;
+                    toString = moduleMain.toString();
+                    tmp = function () {
+                        return;
+                    };
+                    tmp.toString = function () {
+                        return toString;
+                    };
+                }());
+            }
+            // normalize moduleMain
+            moduleMain = options.moduleDict[options.env.npm_package_name] =
+                local.objectSetDefault(tmp, moduleMain);
             // init circularList - builtin
             Object.keys(process.binding('natives')).forEach(function (key) {
                 if (!(/\/|_linklist|sys/).test(key)) {
@@ -687,7 +721,8 @@ local.templateApidocMd = '\
             });
             module = options.moduleExtraDict[options.env.npm_package_name] =
                 options.moduleExtraDict[options.env.npm_package_name] || {};
-            options.libFileList.forEach(function (file) {
+            options.exampleList = options.exampleList.slice(0, 64);
+            options.libFileList.some(function (file) {
                 try {
                     tmp = {};
                     tmp.name = local.path.basename(file)
@@ -728,11 +763,9 @@ local.templateApidocMd = '\
                     options.exampleList.push(readExample(file));
                 } catch (ignore) {
                 }
+                return options.exampleList.length < 128;
             });
             local.apidocModuleDictAdd(options, options.moduleExtraDict);
-            // normalize moduleMain
-            moduleMain = options.moduleDict[options.env.npm_package_name] =
-                local.objectSetDefault({}, moduleMain);
             Object.keys(options.moduleDict).forEach(function (key) {
                 if (key.indexOf(options.env.npm_package_name + '.') !== 0) {
                     return;
@@ -747,8 +780,11 @@ local.templateApidocMd = '\
                     module = options.moduleDict[prefix];
                     // handle case where module is a function
                     if (typeof module === 'function') {
-                        module[prefix.split('.').slice(-1)[0]] =
-                            module[prefix.split('.').slice(-1)[0]] || module;
+                        try {
+                            module[prefix.split('.').slice(-1)[0]] =
+                                module[prefix.split('.').slice(-1)[0]] || module;
+                        } catch (ignore) {
+                        }
                     }
                     return {
                         elementList: Object.keys(module)
@@ -1023,6 +1059,22 @@ local.templateApidocMd = '\
                 : element, replacer, space);
         };
 
+        local.listShuffle = function (list) {
+        /*
+         * https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
+         * this function will inplace shuffle the list, via fisher-yates algorithm
+         */
+            var ii, random, swap;
+            for (ii = list.length - 1; ii > 0; ii -= 1) {
+                // coerce to finite integer
+                random = (Math.random() * (ii + 1)) | 0;
+                swap = list[ii];
+                list[ii] = list[random];
+                list[random] = swap;
+            }
+            return list;
+        };
+
         local.nop = function () {
         /*
          * this function will do nothing
@@ -1090,7 +1142,7 @@ local.templateApidocMd = '\
          * this function will if error exists, then print error.stack to stderr
          */
             if (error && !local.global.__coverage__) {
-                console.error(error.stack);
+                console.error(error);
             }
         };
 
@@ -1155,7 +1207,7 @@ local.templateApidocMd = '\
 
         local.setTimeoutOnError = function (onError, error, data) {
         /*
-         * this function will asynchronously call onError
+         * this function will async-call onError
          */
             if (typeof onError === 'function') {
                 setTimeout(function () {
@@ -1476,44 +1528,88 @@ local.templateApidocMd = '\
             this.isDirty = null;
             this.idIndexList = [{ name: '_id', dict: {} }];
             this.onSaveList = [];
-            this.ttl = 0;
-            this.ttlLast = 0;
+            this.sizeLimit = options.sizeLimit || 0;
         };
 
         local._DbTable.prototype._cleanup = function () {
         /*
          * this function will cleanup soft-deleted records from the dbTable
          */
-            var dbRow, ii, list, ttl;
-            ttl = Date.now();
-            if (!(this.isDirty ||
-                  // cleanup ttl every minute
-                  (this.ttl && this.ttlLast + this.ttl < ttl))) {
+            var dbRow, ii, list;
+            if (!this.isDirty && this.dbRowList.length <= this.sizeLimit) {
                 return;
             }
             this.isDirty = null;
-            this.ttlLast = ttl;
             // cleanup dbRowList
             list = this.dbRowList;
             this.dbRowList = [];
             // optimization - for-loop
             for (ii = 0; ii < list.length; ii += 1) {
                 dbRow = list[ii];
-                // cleanup ttl
-                if (this.ttl && dbRow.$meta.ttl < ttl) {
-                    this._crudRemoveOneById(dbRow);
                 // cleanup isRemoved
-                } else if (!dbRow.$meta.isRemoved) {
+                if (!dbRow.$meta.isRemoved) {
                     this.dbRowList.push(dbRow);
                 }
             }
+            if (this.sizeLimit && this.dbRowList.length >= 1.5 * this.sizeLimit) {
+                this.dbRowList = this._crudGetManyByQuery(
+                    {},
+                    this.sortDefault,
+                    0,
+                    this.sizeLimit
+                );
+            }
         };
 
-        local._DbTable.prototype._crudGetManyByQuery = function (query) {
+        local._DbTable.prototype._crudGetManyByQuery = function (
+            query,
+            sort,
+            skip,
+            limit,
+            shuffle
+        ) {
         /*
-         * this function will get the dbRow's in the dbTable with the given query
+         * this function will get the dbRow's in the dbTable,
+         * with the given query, sort, skip, and limit
          */
-            return local.dbRowListGetManyByQuery(this.dbRowList, local.normalizeDict(query));
+            var ii, result;
+            result = this.dbRowList;
+            // get by query
+            if (result.length && query && Object.keys(query).length) {
+                result = local.dbRowListGetManyByQuery(this.dbRowList, query);
+            }
+            // sort
+            local.normalizeList(sort).forEach(function (element) {
+                // bug-workaround - v8 does not have stable-sort
+                // optimization - for-loop
+                for (ii = 0; ii < result.length; ii += 1) {
+                    result[ii].$meta.ii = ii;
+                }
+                if (element.isDescending) {
+                    result.sort(function (aa, bb) {
+                        return -local.sortCompare(
+                            local.dbRowGetItem(aa, element.fieldName),
+                            local.dbRowGetItem(bb, element.fieldName),
+                            aa.$meta.ii,
+                            bb.$meta.ii
+                        );
+                    });
+                } else {
+                    result.sort(function (aa, bb) {
+                        return local.sortCompare(
+                            local.dbRowGetItem(aa, element.fieldName),
+                            local.dbRowGetItem(bb, element.fieldName),
+                            aa.$meta.ii,
+                            bb.$meta.ii
+                        );
+                    });
+                }
+            });
+            // skip and limit
+            result = result.slice(skip || 0, (skip || 0) + (limit || Infinity));
+            // shuffle
+            ((shuffle && local.listShuffle) || local.nop)(result);
+            return result;
         };
 
         local._DbTable.prototype._crudGetOneById = function (idDict) {
@@ -1605,7 +1701,7 @@ local.templateApidocMd = '\
             // remove existing dbRow
             existing = this._crudRemoveOneById(dbRow) || dbRow;
             // init meta
-            dbRow.$meta = { isRemoved: null, ttl: this.ttl + Date.now() };
+            dbRow.$meta = { isRemoved: null };
             this.idIndexList.forEach(function (idIndex) {
                 // auto-set id
                 id = local.dbRowSetId(existing, idIndex);
@@ -1688,36 +1784,16 @@ local.templateApidocMd = '\
         /*
          * this function will get the dbRow's in the dbTable with the given options.query
          */
-            var result;
             this._cleanup();
             options = local.normalizeDict(options);
-            // get dbRow's with the given options.query
-            result = this._crudGetManyByQuery(options.query);
-            // sort dbRow's with the given options.sort
-            local.normalizeList(options.sort || this.sortDefault).forEach(function (element) {
-                if (element.isDescending) {
-                    result.sort(function (aa, bb) {
-                        return -local.sortCompare(
-                            local.dbRowGetItem(aa, element.fieldName),
-                            local.dbRowGetItem(bb, element.fieldName)
-                        );
-                    });
-                } else {
-                    result.sort(function (aa, bb) {
-                        return local.sortCompare(
-                            local.dbRowGetItem(aa, element.fieldName),
-                            local.dbRowGetItem(bb, element.fieldName)
-                        );
-                    });
-                }
-            });
-            // skip and limit dbRow's with the given options.skip and options.limit
-            result = result.slice(
-                options.skip || 0,
-                (options.skip || 0) + (options.limit || Infinity)
-            );
             return local.setTimeoutOnError(onError, null, local.dbRowProject(
-                result,
+                this._crudGetManyByQuery(
+                    options.query,
+                    options.sort || this.sortDefault,
+                    options.skip,
+                    options.limit,
+                    options.shuffle
+                ),
                 options.fieldList
             ));
         };
@@ -1893,13 +1969,13 @@ local.templateApidocMd = '\
             this._cleanup();
             self = this;
             result = '';
-            result += self.name + ' ttlSet ' + self.ttl + '\n';
             self.idIndexList.forEach(function (idIndex) {
                 result += self.name + ' idIndexCreate ' + JSON.stringify({
                     isInteger: idIndex.isInteger,
                     name: idIndex.name
                 }) + '\n';
             });
+            result += self.name + ' sizeLimit ' + self.sizeLimit + '\n';
             result += self.name + ' sortDefault ' + JSON.stringify(self.sortDefault) + '\n';
             self.crudGetManyByQuery({}).forEach(function (dbRow) {
                 result += self.name + ' dbRowSet ' + JSON.stringify(dbRow) + '\n';
@@ -1979,23 +2055,6 @@ local.templateApidocMd = '\
             }, 1000);
         };
 
-        local._DbTable.prototype.ttlSet = function (ttl, onError) {
-        /*
-         * this function will set the ttl in milliseconds
-         */
-            var ii;
-            // set ttl in milliseconds
-            this.ttl = ttl;
-            // update dbRowList
-            ttl += Date.now();
-            // optimization - for-loop
-            for (ii = 0; ii < this.dbRowList.length; ii += 1) {
-                this.dbRowList[ii].$meta.ttl = ttl;
-            }
-            this.save();
-            return local.setTimeoutOnError(onError);
-        };
-
         local.dbCrudRemoveAll = function (onError) {
         /*
          * this function will remove all dbRow's from the db
@@ -2052,7 +2111,7 @@ local.templateApidocMd = '\
             setTimeout(function () {
                 local.modeImport = null;
             });
-            text.replace((/^(\w\S*?) (\S+?) (\S.+?)$/gm), function (
+            text.replace((/^(\w\S*?) (\S+?) (\S.*?)$/gm), function (
                 match0,
                 match1,
                 match2,
@@ -2069,12 +2128,12 @@ local.templateApidocMd = '\
                     dbTable = local.dbTableCreateOne({ isLoaded: true, name: match1 });
                     dbTable.idIndexCreate(JSON.parse(match3));
                     break;
+                case 'sizeLimit':
+                    dbTable = local.dbTableCreateOne({ isLoaded: true, name: match1 });
+                    dbTable.sizeLimit = JSON.parse(match3);
+                    break;
                 case 'sortDefault':
                     dbTable = local.dbTableCreateOne({ isLoaded: true, name: match1 });
-                    break;
-                case 'ttlSet':
-                    dbTable = local.dbTableCreateOne({ isLoaded: true, name: match1 });
-                    dbTable.ttlSet(JSON.parse(match3));
                     break;
                 default:
                     local.onErrorDefault(new Error('dbImport - invalid operation - ' + match0));
@@ -2250,9 +2309,6 @@ local.templateApidocMd = '\
          */
             var bb, dbRowDict, result;
             result = dbRowList;
-            if (!result.length) {
-                return result;
-            }
             if (!(query && typeof query === 'object')) {
                 result = local.dbRowListGetManyByOperator(result, fieldName, '$eq', query);
                 return result;
@@ -2402,7 +2458,7 @@ local.templateApidocMd = '\
 
         local.dbTableDict = {};
 
-        local.sortCompare = function (aa, bb) {
+        local.sortCompare = function (aa, bb, ii, jj) {
         /*
          * this function will compare aa vs bb and return:
          * -1 if aa < bb
@@ -2413,7 +2469,9 @@ local.templateApidocMd = '\
          */
             var typeof1, typeof2;
             if (aa === bb) {
-                return 0;
+                return ii < jj
+                    ? -1
+                    : 1;
             }
             if (aa === null) {
                 return -1;
@@ -2683,6 +2741,59 @@ local.templateApidocMd = '\
             // return callback
             return onParallel;
         };
+
+        local.onParallelList = function (options, onEach, onError) {
+        /*
+         * this function will
+         * 1. async-run onEach in parallel,
+         *    with the given options.rateLimit and options.retryLimit
+         * 2. call onError when done
+         */
+            var ii, onEach2, onParallel;
+            onEach2 = function () {
+                while (ii + 1 < options.list.length && onParallel.counter < options.rateLimit) {
+                    ii += 1;
+                    onParallel.ii += 1;
+                    onParallel.remaining -= 1;
+                    onEach({
+                        element: options.list[ii],
+                        ii: ii,
+                        list: options.list,
+                        retry: 0
+                    }, onParallel);
+                }
+            };
+            onParallel = local.onParallel(onError, onEach2, function (error, data) {
+                if (error && data && data.retry < options.retryLimit) {
+                    local.onErrorDefault(error);
+                    data.retry += 1;
+                    setTimeout(function () {
+                        onParallel.counter -= 1;
+                        onEach(data, onParallel);
+                    }, 1000);
+                    return true;
+                }
+            });
+            onParallel.counter += 1;
+            ii = -1;
+            onParallel.ii = -1;
+            onParallel.remaining = options.list.length;
+            options.rateLimit = Number(options.rateLimit) || 4;
+            options.rateLimit = Math.max(options.rateLimit, 3);
+            options.retryLimit = Number(options.retryLimit) || 2;
+            onEach2();
+            onParallel();
+        };
+
+        local.onReadyAfter = function (onError) {
+        /*
+         * this function will call onError when onReadyBefore.counter === 0
+         */
+            local.onReadyBefore.counter += 1;
+            local.taskCreate({ key: 'utility2.onReadyAfter' }, null, onError);
+            local.onResetAfter(local.onReadyBefore);
+            return onError;
+        };
     }());
     switch (local.modeJs) {
 
@@ -2695,7 +2806,6 @@ local.templateApidocMd = '\
          * this function will delete the github file
          * https://developer.github.com/v3/repos/contents/#delete-a-file
          */
-            var onParallel;
             options = { message: options.message, url: options.url };
             local.onNext(options, function (error, data) {
                 switch (options.modeNext) {
@@ -2715,17 +2825,14 @@ local.templateApidocMd = '\
                         return;
                     }
                     // delete tree
-                    onParallel = local.onParallel(options.onNext);
-                    onParallel.counter += 1;
-                    data.forEach(function (element) {
+                    local.onParallelList({ list: data }, function (data, onParallel) {
                         onParallel.counter += 1;
                         // recurse
                         local.contentDelete({
                             message: options.message,
-                            url: element.url
+                            url: data.element.url
                         }, onParallel);
-                    });
-                    onParallel();
+                    }, options.onNext);
                     break;
                 default:
                     onError();
@@ -2886,7 +2993,7 @@ local.templateApidocMd = '\
                     return match0;
                 });
             if (options.url.indexOf('https://api.github.com/repos/') !== 0) {
-                options.onError2(new Error('invalid url ' + options.url));
+                onError(new Error('invalid url ' + options.url));
                 return;
             }
             if (options.method !== 'GET') {
@@ -2952,18 +3059,14 @@ local.templateApidocMd = '\
          * this function will touch options.urlList in parallel
          * https://developer.github.com/v3/repos/contents/#update-a-file
          */
-            var onParallel;
-            onParallel = local.onParallel(onError);
-            onParallel.counter += 1;
-            options.urlList.forEach(function (url) {
+            local.onParallelList({ list: options.urlList }, function (data, onParallel) {
                 onParallel.counter += 1;
                 local.contentTouch({
                     message: options.message,
                     modeErrorIgnore: true,
-                    url: url
+                    url: data.element
                 }, onParallel);
-            });
-            onParallel();
+            }, onError);
         };
         break;
     }
@@ -5513,8 +5616,10 @@ local.templateCoverageBadgeSvg =
                 local._moduleExtensionsJs = local.module._extensions['.js'];
                 local.module._extensions['.js'] = function (module, file) {
                     if (typeof file === 'string' &&
-                            file.indexOf(process.cwd()) === 0 &&
-                            file.indexOf(process.cwd() + '/node_modules/') !== 0) {
+                            (file.indexOf(process.env.npm_config_mode_coverage_dir) === 0 || (
+                                file.indexOf(process.cwd()) === 0 &&
+                                file.indexOf(process.cwd() + '/node_modules/') !== 0
+                            ))) {
                         module._compile(local.instrumentInPackage(
                             local._fs.readFileSync(file, 'utf8'),
                             file
@@ -9685,7 +9790,7 @@ instruction\n\
                     /*jslint evil: true*/\n\
                     eval(document.querySelector(\'#inputTextareaEval1\').value);\n\
                 } catch (errorCaught) {\n\
-                    console.error(errorCaught.stack);\n\
+                    console.error(errorCaught);\n\
                 }\n\
             }\n\
         };\n\
@@ -9742,9 +9847,9 @@ local.assetsDict['/assets.index.template.html'].replace((/\n/g), '\\n\\\n') +
                 local.assetsDict[\'/assets.index.template.html\'],\n\
                 {\n\
                     env: local.objectSetDefault(local.env, {\n\
-                        npm_package_description: \'example module\',\n\
-                        npm_package_name: \'example\',\n\
-                        npm_package_nameAlias: \'example\',\n\
+                        npm_package_description: \'the greatest app in the world!\',\n\
+                        npm_package_name: \'my-app\',\n\
+                        npm_package_nameAlias: \'my_app\',\n\
                         npm_package_version: \'0.0.1\'\n\
                     })\n\
                 }\n\
@@ -9756,11 +9861,11 @@ local.assetsDict['/assets.index.template.html'].replace((/\n/g), '\\n\\\n') +
                     String(match0);\n\
                     switch (match1) {\n\
                     case \'npm_package_description\':\n\
-                        return \'example module\';\n\
+                        return \'the greatest app in the world!\';\n\
                     case \'npm_package_name\':\n\
-                        return \'example\';\n\
+                        return \'my-app\';\n\
                     case \'npm_package_nameAlias\':\n\
-                        return \'example\';\n\
+                        return \'my_app\';\n\
                     case \'npm_package_version\':\n\
                         return \'0.0.1\';\n\
                     }\n\
@@ -9776,7 +9881,7 @@ local.assetsDict['/assets.index.template.html'].replace((/\n/g), '\\n\\\n') +
         local.assetsDict[\'/assets.jslint.rollup.js\'] =\n\
             local.assetsDict[\'/assets.jslint.rollup.js\'] ||\n\
             local.fs.readFileSync(\n\
-                // npmdoc-hack\n\
+                // buildCustomOrg-hack\n\
                 local.jslint.__dirname +\n\
                     \'/lib.jslint.js\',\n\
                 \'utf8\'\n\
@@ -9869,7 +9974,7 @@ local.assetsDict['/assets.lib.template.js'] = '\
 
 local.assetsDict['/assets.readme.template.md'] = '\
 # jslint-lite\n\
-example module\n\
+the greatest app in the world!\n\
 \n\
 [![travis-ci.org build-status](https://api.travis-ci.org/kaizhu256/node-jslint-lite.svg)](https://travis-ci.org/kaizhu256/node-jslint-lite) [![istanbul-coverage](https://kaizhu256.github.io/node-jslint-lite/build/coverage.badge.svg)](https://kaizhu256.github.io/node-jslint-lite/build/coverage.html/index.html)\n\
 \n\
@@ -9889,7 +9994,7 @@ example module\n\
 # live demo\n\
 - [https://kaizhu256.github.io/node-jslint-lite/build..beta..travis-ci.org/app/index.html](https://kaizhu256.github.io/node-jslint-lite/build..beta..travis-ci.org/app/index.html)\n\
 \n\
-[![github.com test-server](https://kaizhu256.github.io/node-jslint-lite/build/screenCapture.deployGithub.browser._2Fnode-jslint-lite_2Fbuild_2Fapp_2Findex.html.png)](https://kaizhu256.github.io/node-jslint-lite/build..beta..travis-ci.org/app/index.html)\n\
+[![github.com test-server](https://kaizhu256.github.io/node-jslint-lite/build/screenCapture.deployGithub.browser.%252Fnode-jslint-lite%252Fbuild%252Fapp%252Findex.html.png)](https://kaizhu256.github.io/node-jslint-lite/build..beta..travis-ci.org/app/index.html)\n\
 \n\
 \n\
 \n\
@@ -9897,12 +10002,12 @@ example module\n\
 #### apidoc\n\
 - [https://kaizhu256.github.io/node-jslint-lite/build..beta..travis-ci.org/apidoc.html](https://kaizhu256.github.io/node-jslint-lite/build..beta..travis-ci.org/apidoc.html)\n\
 \n\
-[![apidoc](https://kaizhu256.github.io/node-jslint-lite/build/screenCapture.buildApidoc.browser._2Fhome_2Ftravis_2Fbuild_2Fkaizhu256_2Fnode-jslint-lite_2Ftmp_2Fbuild_2Fapidoc.html.png)](https://kaizhu256.github.io/node-jslint-lite/build..beta..travis-ci.org/apidoc.html)\n\
+[![apidoc](https://kaizhu256.github.io/node-jslint-lite/build/screenCapture.buildCi.browser.%252Ftmp%252Fbuild%252Fapidoc.html.png)](https://kaizhu256.github.io/node-jslint-lite/build..beta..travis-ci.org/apidoc.html)\n\
 \n\
 #### todo\n\
 - none\n\
 \n\
-#### change since xxxxxxxx\n\
+#### changes for v0.0.1\n\
 - none\n\
 \n\
 #### this package requires\n\
@@ -9937,14 +10042,14 @@ example module\n\
 \n\
 \n\
 # quickstart web example\n\
-![screenCapture](https://kaizhu256.github.io/node-jslint-lite/build/screenCapture.testExampleJs.browser..png)\n\
+![screenCapture](https://kaizhu256.github.io/node-jslint-lite/build/screenCapture.testExampleJs.browser.%252F.png)\n\
 \n\
 #### to run this example, follow the instruction in the script below\n\
 - [example.js](https://kaizhu256.github.io/node-jslint-lite/build..beta..travis-ci.org/example.js)\n\
 ```javascript\n' + local.assetsDict['/assets.example.template.js'] + '```\n\
 \n\
 #### output from browser\n\
-![screenCapture](https://kaizhu256.github.io/node-jslint-lite/build/screenCapture.testExampleJs.browser..png)\n\
+![screenCapture](https://kaizhu256.github.io/node-jslint-lite/build/screenCapture.testExampleJs.browser.%252F.png)\n\
 \n\
 #### output from shell\n\
 ![screenCapture](https://kaizhu256.github.io/node-jslint-lite/build/screenCapture.testExampleJs.svg)\n\
@@ -9955,7 +10060,7 @@ example module\n\
 ```json\n\
 {\n\
     "author": "kai zhu <kaizhu256@gmail.com>",\n\
-    "description": "example module",\n\
+    "description": "the greatest app in the world!",\n\
     "devDependencies": {\n\
         "electron-lite": "kaizhu256/node-electron-lite#alpha",\n\
         "utility2": "kaizhu256/node-utility2#alpha"\n\
@@ -10004,7 +10109,7 @@ example module\n\
 \n\
 shBuildCiPost() {(set -e\n\
     shDeployGithub\n\
-    shDeployHeroku\n\
+    # shDeployHeroku\n\
     shReadmeBuildLinkVerify\n\
 )}\n\
 \n\
@@ -10023,6 +10128,109 @@ shBuildCi\n\
 \n\
 # misc\n\
 - this package was created with [utility2](https://github.com/kaizhu256/node-utility2)\n\
+';
+
+
+
+local.assetsDict['/assets.readmeCustomOrg.npmdoc.template.md'] = '\
+# api documentation for \
+{{#if env.npm_package_homepage}} \
+[{{env.npm_package_name}} (v{{env.npm_package_version}})]({{env.npm_package_homepage}}) \
+{{#unless env.npm_package_homepage}} \
+{{env.npm_package_name}} (v{{env.npm_package_version}}) \
+{{/if env.npm_package_homepage}} \
+[![npm package](https://img.shields.io/npm/v/npmdoc-{{env.npm_package_name}}.svg?style=flat-square)](https://www.npmjs.org/package/npmdoc-{{env.npm_package_name}}) \
+[![travis-ci.org build-status](https://api.travis-ci.org/npmdoc/node-npmdoc-{{env.npm_package_name}}.svg)](https://travis-ci.org/npmdoc/node-npmdoc-{{env.npm_package_name}}) \
+\n\
+#### {{env.npm_package_description}} \
+\n\
+\n\
+[![NPM](https://nodei.co/npm/{{env.npm_package_name}}.png?downloads=true&downloadRank=true&stars=true)](https://www.npmjs.com/package/{{env.npm_package_name}}) \
+\n\
+\n\
+[![apidoc](https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/screenCapture.buildCi.browser.%252Ftmp%252Fbuild%252Fapidoc.html.png)](https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/apidoc.html) \
+\n\
+\n\
+![npmPackageListing](https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/screenCapture.npmPackageListing.svg) \
+\n\
+\n\
+![npmPackageDependencyTree](https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/screenCapture.npmPackageDependencyTree.svg) \
+\n\
+\n\
+\n\
+\n\
+# package.json \
+\n\
+\n\
+```json \
+\n\
+\n\
+{{packageJson jsonStringify4 markdownCodeSafe}} \
+\n\
+``` \
+\n\
+';
+
+
+
+local.assetsDict['/assets.readmeCustomOrg.npmtest.template.md'] = '\
+# test coverage for \
+{{#if env.npm_package_homepage}} \
+[{{env.npm_package_name}} (v{{env.npm_package_version}})]({{env.npm_package_homepage}}) \
+{{#unless env.npm_package_homepage}} \
+{{env.npm_package_name}} (v{{env.npm_package_version}}) \
+{{/if env.npm_package_homepage}} \
+[![npm package](https://img.shields.io/npm/v/npmtest-{{env.npm_package_name}}.svg?style=flat-square)](https://www.npmjs.org/package/npmtest-{{env.npm_package_name}}) \
+[![travis-ci.org build-status](https://api.travis-ci.org/npmtest/node-npmtest-{{env.npm_package_name}}.svg)](https://travis-ci.org/npmtest/node-npmtest-{{env.npm_package_name}}) \
+\n\
+#### {{env.npm_package_description}} \
+\n\
+\n\
+[![NPM](https://nodei.co/npm/{{env.npm_package_name}}.png?downloads=true&downloadRank=true&stars=true)](https://www.npmjs.com/package/{{env.npm_package_name}}) \
+\n\
+\n\
+| git-branch : | [alpha](https://github.com/npmtest/node-npmtest-{{env.npm_package_name}}/tree/alpha)|\n\
+|--:|:--| \
+\n\
+| coverage : | [![istanbul-coverage](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/coverage.badge.svg)](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/coverage.html/index.html)| \
+\n\
+| test-report : | [![test-report](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/test-report.badge.svg)](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/test-report.html)| \
+\n\
+| build-artifacts : | [![build-artifacts](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/glyphicons_144_folder_open.png)](https://github.com/npmtest/node-npmtest-{{env.npm_package_name}}/tree/gh-pages/build)| \
+\n\
+\n\
+[![istanbul-coverage](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/screenCapture.buildCi.browser.%252Ftmp%252Fbuild%252Fcoverage.lib.html.png)](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/coverage.html/index.html) \
+\n\
+\n\
+[![test-report](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/screenCapture.buildCi.browser.%252Ftmp%252Fbuild%252Ftest-report.html.png)](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/test-report.html) \
+\n\
+\n\
+[![apidoc](https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/screenCapture.buildCi.browser.%252Ftmp%252Fbuild%252Fapidoc.html.png)](https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/apidoc.html) \
+\n\
+\n\
+![npmPackageListing](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/screenCapture.npmPackageListing.svg) \
+\n\
+\n\
+![npmPackageDependencyTree](https://npmtest.github.io/node-npmtest-{{env.npm_package_name}}/build/screenCapture.npmPackageDependencyTree.svg) \
+\n\
+\n\
+\n\
+\n\
+# package.json \
+\n\
+\n\
+```json \
+\n\
+\n\
+{{packageJson jsonStringify4 markdownCodeSafe}} \
+\n\
+``` \
+\n\
+\n\
+\n\
+\n\
+# misc\n\
+- this document was created with [utility2](https://github.com/kaizhu256/node-utility2)\n\
 ';
 
 
@@ -10137,10 +10345,6 @@ local.assetsDict['/assets.test.template.js'] = '\
          * this function will test buildApidoc\'s default handling-behavior-behavior\n\
          */\n\
             options = { modulePathList: module.paths };\n\
-            if (local.env.npm_package_buildNpmdoc) {\n\
-                local.buildNpmdoc(options, onError);\n\
-                return;\n\
-            }\n\
             local.buildApidoc(options, onError);\n\
         };\n\
 \n\
@@ -10154,9 +10358,19 @@ local.assetsDict['/assets.test.template.js'] = '\
             local.testCase_buildReadme_default(options, local.onErrorThrow);\n\
             local.testCase_buildLib_default(options, local.onErrorThrow);\n\
             local.testCase_buildTest_default(options, local.onErrorThrow);\n\
+            local.testCase_buildCustomOrg_default(options, local.onErrorThrow);\n\
             options = [];\n\
             local.buildApp(options, onError);\n\
         };\n\
+\n\
+        local.testCase_buildCustomOrg_default = local.testCase_buildCustomOrg_default ||\n\
+            function (options, onError) {\n\
+            /*\n\
+             * this function will test buildCustomOrg\'s default handling-behavior\n\
+             */\n\
+                options = {};\n\
+                local.buildCustomOrg(options, onError);\n\
+            };\n\
 \n\
         local.testCase_buildLib_default = local.testCase_buildLib_default || function (\n\
             options,\n\
@@ -10176,10 +10390,6 @@ local.assetsDict['/assets.test.template.js'] = '\
         /*\n\
          * this function will test buildReadme\'s default handling-behavior-behavior\n\
          */\n\
-            if (local.env.npm_package_buildNpmdoc) {\n\
-                onError();\n\
-                return;\n\
-            }\n\
             options = {};\n\
             local.buildReadme(options, onError);\n\
         };\n\
@@ -10315,7 +10525,10 @@ local.assetsDict['/assets.testReport.template.html'] = '\
 <h4>\n\
     {{testPlatformNumber}}. {{name htmlSafe}}<br>\n\
     {{#if screenCaptureImg}}\n\
-    <a href="{{screenCaptureImg}}"><img src="{{screenCaptureImg}}"></a><br>\n\
+    <a href="{{screenCaptureImg encodeURIComponent}}">\n\
+        <img src="{{screenCaptureImg encodeURIComponent}}">\n\
+    </a>\n\
+    <br>\n\
     {{/if screenCaptureImg}}\n\
     <span>time-elapsed</span>- {{timeElapsed}} ms<br>\n\
     <span>tests failed</span>- {{testsFailed}}<br>\n\
@@ -11414,8 +11627,16 @@ local.assetsDict['/favicon.ico'] = '';
                     if (!(/^\w+:\/\//).test(options.url)) {
                         options.url = local.path.resolve(process.cwd(), options.url);
                     }
+                    options.urlParsed = local.urlParse(options.url);
+                    options.testName = options.urlParsed.pathname;
+                    if (options.testName.indexOf(process.cwd()) === 0) {
+                        options.testName = options.testName.replace(process.cwd(), '');
+                    }
+                    if (local.env.npm_config_modeBrowserTestHostInclude) {
+                        options.testName = options.urlParsed.host + options.testName;
+                    }
                     options.testName = local.env.MODE_BUILD + '.browser.' +
-                        encodeURIComponent(local.urlParse(options.url).pathname
+                        encodeURIComponent(options.testName
                             .replace(
                                 '/build..' + local.env.CI_BRANCH + '..' + local.env.CI_HOST,
                                 '/build'
@@ -11424,9 +11645,7 @@ local.assetsDict['/favicon.ico'] = '';
                         fileCoverage: local.env.npm_config_dir_tmp +
                             '/coverage.' + options.testName + '.json',
                         fileScreenCapture: (local.env.npm_config_dir_build +
-                            '/screenCapture.' + options.testName + '.png')
-                            .replace((/%/g), '_')
-                            .replace((/_2F\.png$/), '.png'),
+                            '/screenCapture.' + options.testName + '.png'),
                         fileTestReport: local.env.npm_config_dir_tmp +
                             '/test-report.' + options.testName + '.json',
                         modeBrowserTest: 'test',
@@ -11489,6 +11708,12 @@ local.assetsDict['/favicon.ico'] = '';
                     }).once('exit', onNext);
                     break;
                 case 2:
+                    // cleanup fileElectronHtml
+                    try {
+                        local.fs.unlinkSync(options.fileElectronHtml);
+                        local.fs.unlinkSync(options.fileElectronHtml + '.preload.js');
+                    } catch (ignore) {
+                    }
                     console.error('\nbrowserTest - exit-code ' + error + ' - ' + options.url +
                         '\n');
                     // merge browser coverage
@@ -11591,7 +11816,7 @@ local.assetsDict['/favicon.ico'] = '';
                         try {
                             onNext(null, event);
                         } catch (errorCaught) {
-                            console.error(errorCaught.stack);
+                            console.error(errorCaught);
                         }
                     });
                     break;
@@ -11806,6 +12031,10 @@ return Utf8ArrayToStr(bff);
         /*
          * this function will build the apidoc
          */
+            if (local.env.npm_package_buildCustomOrg && !options.modeForce) {
+                onError();
+                return;
+            }
             // optimization - do not run if $npm_config_mode_coverage = all
             if (local.env.npm_config_mode_coverage === 'all') {
                 onError();
@@ -11819,10 +12048,7 @@ return Utf8ArrayToStr(bff);
             );
             console.error('created apidoc file://' + local.env.npm_config_dir_build +
                 '/apidoc.html\n');
-            local.browserTest({
-                modeBrowserTest: 'screenCapture',
-                url: local.env.npm_config_dir_build + '/apidoc.html'
-            }, onError);
+            onError();
         };
 
         local.buildApp = function (options, onError) {
@@ -11903,6 +12129,87 @@ return Utf8ArrayToStr(bff);
             });
         };
 
+        local.buildCustomOrg = function (options, onError) {
+        /*
+         * this function will build the customOrg
+         */
+            var done, onError2, onParallel;
+            if (!local.env.npm_package_buildCustomOrg && !options.modeForce) {
+                onError();
+                return;
+            }
+            // ensure exit after 5 minutes
+            setTimeout(process.exit, 5 * 60 * 1000);
+            onError2 = function (error) {
+                local.onErrorDefault(error);
+                if (done) {
+                    return;
+                }
+                done = true;
+                // try to recover from error
+                setTimeout(onError, error && local.timeoutDefault);
+            };
+            // try to salvage uncaughtException
+            process.on('uncaughtException', onError2);
+            onParallel = local.utility2.onParallel(onError2);
+            onParallel.counter += 1;
+            // build package.json
+            options.packageJson = JSON.parse(local.fs.readFileSync('package.json', 'utf8'));
+            onParallel.counter += 1;
+            local.buildReadme({
+                dataFrom: '\n# package.json\n```json\n' + JSON.stringify(options.packageJson) +
+                    '\n```\n',
+                modeForce: true
+            }, onParallel);
+            options.packageJson = JSON.parse(local.fs.readFileSync('package.json', 'utf8'));
+            switch (local.env.GITHUB_ORG) {
+            case 'npmdoc':
+                // update package.json
+                local.objectSetOverride(options.packageJson, local.objectLiteralize({
+                    keywords: ['documentation', local.env.npm_package_buildCustomOrg]
+                }), 2);
+                // build apidoc.html
+                onParallel.counter += 1;
+                local.buildApidoc({
+                    dir: local.env.npm_package_buildCustomOrg,
+                    modeForce: true,
+                    modulePathList: options.modulePathList
+                }, onParallel);
+                // build README.md
+                options.readme = local.apidocCreate({
+                    dir: local.env.npm_package_buildCustomOrg,
+                    header: local.assetsDict['/assets.readmeCustomOrg.npmdoc.template.md'],
+                    modulePathList: options.modulePathList,
+                    template: local.apidoc.templateApidocMd
+                });
+                local.fs.writeFileSync('README.md', options.readme);
+                break;
+            case 'npmtest':
+                // update package.json
+                local.objectSetOverride(options.packageJson, local.objectLiteralize({
+                    keywords: ['coverage', 'test', local.env.npm_package_buildCustomOrg]
+                }), 2);
+                // build README.md
+                options.readme = local.apidocCreate({
+                    dir: local.env.npm_package_buildCustomOrg,
+                    modeNoRender: true,
+                    modulePathList: options.modulePathList,
+                    template: local.assetsDict['/assets.readmeCustomOrg.npmtest.template.md']
+                });
+                local.fs.writeFileSync('README.md', options.readme);
+                break;
+            }
+            // re-build package.json
+            options.packageJson.description = (/\w.*/).exec(options.readme)[0]
+                .replace((/ {2,}/g), ' ')
+                .trim();
+            local.fs.writeFileSync(
+                'package.json',
+                local.jsonStringifyOrdered(options.packageJson, null, 4) + '\n'
+            );
+            onParallel();
+        };
+
         local.buildLib = function (options, onError) {
         /*
          * this function will build the lib
@@ -11944,116 +12251,14 @@ return Utf8ArrayToStr(bff);
             onError();
         };
 
-        local.buildNpmdoc = function (options, onError) {
-        /*
-         * this function will build the npmdoc
-         */
-            var done, onError2, onParallel, packageJson;
-            // ensure exit after 5 minutes
-            setTimeout(process.exit, 5 * 60 * 1000);
-            onError2 = function (error) {
-                local.onErrorDefault(error);
-                if (done) {
-                    return;
-                }
-                done = true;
-                // try to recover from error
-                setTimeout(onError, error && local.timeoutDefault);
-            };
-            // try to salvage uncaughtException
-            process.on('uncaughtException', onError2);
-            onParallel = local.utility2.onParallel(onError2);
-            onParallel.counter += 1;
-            // build package.json
-            packageJson = JSON.parse(local.fs.readFileSync('package.json', 'utf8'));
-            local.objectSetDefault(packageJson, local.objectLiteralize({
-                devDependencies: {
-                    '$[]': [local.env.npm_package_buildNpmdoc, '*']
-                },
-                repository: {
-                    type: 'git',
-                    url: 'https://github.com/npmdoc/node-npmdoc-' +
-                        local.env.npm_package_buildNpmdoc + '.git'
-                }
-            }), 2);
-            local.objectSetOverride(packageJson, local.objectLiteralize({
-                keywords: ['documentation', local.env.npm_package_buildNpmdoc]
-            }), 2);
-            onParallel.counter += 1;
-            local.buildReadme({
-                dataFrom: '\n# package.json\n```json\n' +
-                    JSON.stringify(packageJson) + '\n```\n'
-            }, onParallel);
-            packageJson = JSON.parse(local.fs.readFileSync('package.json', 'utf8'));
-            // build apidoc.html
-            onParallel.counter += 1;
-            local.buildApidoc({
-                dir: local.env.npm_package_buildNpmdoc,
-                modulePathList: options.modulePathList
-            }, onParallel);
-            // build README.md
-            options = { modulePathList: options.modulePathList };
-            options.readme = local.apidocCreate({
-                dir: local.env.npm_package_buildNpmdoc,
-/* jslint-ignore-begin */
-header: '\
-# api documentation for \
-{{#if env.npm_package_homepage}} \
-[{{env.npm_package_name}} (v{{env.npm_package_version}})]({{env.npm_package_homepage}}) \
-{{#unless env.npm_package_homepage}} \
-{{env.npm_package_name}} (v{{env.npm_package_version}}) \
-{{/if env.npm_package_homepage}} \
-[![npm package](https://img.shields.io/npm/v/npmdoc-{{env.npm_package_name}}.svg?style=flat-square)](https://www.npmjs.org/package/npmdoc-{{env.npm_package_name}}) \
-[![travis-ci.org build-status](https://api.travis-ci.org/npmdoc/node-npmdoc-{{env.npm_package_name}}.svg)](https://travis-ci.org/npmdoc/node-npmdoc-{{env.npm_package_name}}) \
-\n\
-#### {{env.npm_package_description}} \
-\n\
-\n\
-[![NPM](https://nodei.co/npm/{{env.npm_package_name}}.png?downloads=true)](https://www.npmjs.com/package/{{env.npm_package_name}}) \
-\n\
-\n\
-[![apidoc](https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/screenCapture.buildNpmdoc.browser._2Fhome_2Ftravis_2Fbuild_2Fnpmdoc_2Fnode-npmdoc-{{env.npm_package_name}}_2Ftmp_2Fbuild_2Fapidoc.html.png)](https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/apidoc.html) \
-\n\
-\n\
-![npmPackageListing](https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/screenCapture.npmPackageListing.svg) \
-\n\
-\n\
-![npmPackageDependencyTree](https://npmdoc.github.io/node-npmdoc-{{env.npm_package_name}}/build/screenCapture.npmPackageDependencyTree.svg) \
-\n\
-\n\
-\n\
-\n\
-# package.json \
-\n\
-\n\
-```json \
-\n\
-\n\
-{{packageJson jsonStringify4 markdownCodeSafe}} \
-\n\
-``` \
-\n\
-',
-/* jslint-ignore-end */
-                modulePathList: options.modulePathList,
-                template: local.apidoc.templateApidocMd
-            });
-            local.fs.writeFileSync('README.md', options.readme);
-            // re-build package.json
-            packageJson.description = (/\w.*/).exec(options.readme)[0]
-                .replace((/ {2,}/g), ' ')
-                .trim();
-            local.fs.writeFileSync(
-                'package.json',
-                local.jsonStringifyOrdered(packageJson, null, 4) + '\n'
-            );
-            onParallel();
-        };
-
         local.buildReadme = function (options, onError) {
         /*
          * this function will build the readme in jslint-lite style
          */
+            if (local.env.npm_package_buildCustomOrg && !options.modeForce) {
+                onError();
+                return;
+            }
             local.objectSetDefault(options, {
                 customize: local.nop,
                 dataFrom: local.tryCatchReadFile('README.md', 'utf8')
@@ -12226,112 +12431,129 @@ header: '\
             return tmp;
         };
 
-        local.dbTableTravisRepoCreate = function (options, onError) {
+        local.dbTableTravisOrgCreate = function (options, onError) {
         /*
-         * this function will create a persistent dbTableTravisRepo
+         * this function will create a persistent dbTableTravisOrg
          */
+            options = local.objectSetDefault(options, { githubOrg: local.env.GITHUB_ORG });
             options = local.objectSetDefault(options, {
-                idIndexCreateList: [{ name: 'githubRepo' }],
+                name: 'TravisOrg.' + options.githubOrg,
+                sizeLimit: 1000,
                 sortDefault: [{
-                    fieldName: 'githubRepo'
+                    fieldName: '_id'
                 }, {
-                    fieldName: 'last_build_started_at'
-                }],
-                name: 'TravisRepo'
+                    fieldName: 'buildFinishedAt'
+                }, {
+                    fieldName: 'buildState'
+                }, {
+                    fieldName: 'active'
+                }]
             });
-            local.dbTableTravisRepo = local.db.dbTableCreateOne(options, onError);
-            return local.dbTableTravisRepo;
+            local.dbTableTravisOrg = local.db.dbTableCreateOne(options, onError);
+            return local.dbTableTravisOrg;
         };
 
-        local.dbTableTravisRepoCrudGetManyByQuery = function (options, onError) {
+        local.dbTableTravisOrgUpdate = function (options, onError) {
         /*
-         * this function will query dbTableTravisRepo
-         */
-            options = local.objectSetDefault(options, {
-                fieldList: ['githubRepo', 'last_build_started_at', 'last_build_status'],
-                sort: [{ fieldName: 'last_build_started_at' }]
-            });
-            return local.dbTableTravisRepoCreate().crudGetManyByQuery(options, onError);
-        };
-
-        local.dbTableTravisRepoUpdate = function (options, onError) {
-        /*
-         * this function will update dbTableTravisRepo with active, public repos
+         * this function will update dbTableTravisOrg with active, public repos
          */
             var dbRowList, self;
-            options = local.objectSetDefault(options, { queryLimit: 500, rateLimit: 10 });
+            options = local.objectSetDefault(options, { githubOrg: local.env.GITHUB_ORG });
             local.onNext(options, function (error, data) {
                 switch (options.modeNext) {
                 case 1:
-                    local.timeElapsedStart(options);
-                    self = local.dbTableTravisRepo =
-                        local.dbTableTravisRepoCreate(options, options.onNext);
+                    self = local.dbTableTravisOrg =
+                        local.dbTableTravisOrgCreate(options, options.onNext);
                     break;
                 case 2:
-                    self = local.dbTableTravisRepo = data;
-                    console.error('dbTableTravisRepoUpdate - updating ' +
-                        Math.min(options.queryLimit, self.crudCountAll()) +
-                        ' of ' + self.crudCountAll() + ' dbRows ...');
-                    local.ajax({
-                        headers: { Authorization: 'token ' + local.env.TRAVIS_ACCESS_TOKEN },
-                        url: 'https://api.travis-ci.org/hooks'
-                    }, options.onNext);
+                    self = local.dbTableTravisOrg = data;
+                    data = {
+                        headers: {
+                            'Travis-API-Version': '3',
+                            Authorization: 'token ' + local.env.TRAVIS_ACCESS_TOKEN
+                        },
+                        url: 'https://api.travis-ci.org/repos?limit=1'
+                    };
+                    console.error('fetching ' + data.url + ' ...');
+                    local.ajax(data, options.onNext);
                     break;
                 case 3:
-                    // validate no error occurred
-                    local.assert(!error, error);
-                    data = JSON.parse(data.responseText)
-                        .filter(function (dbRow) {
-                            return dbRow.active === true && dbRow.private === false;
-                        })
-                        .map(function (dbRow) {
-                            dbRow.githubRepo = dbRow.uid.replace(':', '/');
-                            dbRow.uid = null;
-                            dbRow.url = null;
-                            return dbRow;
-                        });
-                    self.crudUpdateManyById(data);
-                    dbRowList = local.dbTableTravisRepoCrudGetManyByQuery({
-                        limit: options.queryLimit
-                    });
+                    console.error('... fetched ' + data.url);
+                    data = JSON.parse(data.responseText)['@pagination'].count;
+                    dbRowList = [];
                     local.onParallelList({
-                        list: dbRowList,
-                        rateLimit: options.rateLimit
-                    }, function (dbRow, onParallel) {
-                        dbRow = dbRow.element;
+                        list: [{
+                            offset: 0,
+                            sort_by: 'asc'
+                        }, {
+                            offset: 100,
+                            sort_by: 'asc'
+                        }, {
+                            offset: 200,
+                            sort_by: 'asc'
+                        }, {
+                            offset: 300,
+                            sort_by: 'asc'
+                        }, {
+                            offset: 400,
+                            sort_by: 'asc'
+                        }, {
+                            offset: data - 500,
+                            sort_by: 'desc'
+                        }, {
+                            offset: data - 400,
+                            sort_by: 'desc'
+                        }, {
+                            offset: data - 300,
+                            sort_by: 'desc'
+                        }, {
+                            offset: data - 200,
+                            sort_by: 'desc'
+                        }, {
+                            offset: data - 100,
+                            sort_by: 'desc'
+                        }]
+                    }, function (options2, onParallel) {
                         onParallel.counter += 1;
-                        local.ajax({
+                        options2 = {
                             headers: {
+                                'Travis-API-Version': '3',
                                 Authorization: 'token ' + local.env.TRAVIS_ACCESS_TOKEN
                             },
-                            url: 'https://api.travis-ci.org/repos/' + dbRow.githubRepo
-                        }, function (error, data) {
+                            url: 'https://api.travis-ci.org/repos?' +
+                                'include=repository.current_build&' +
+                                'limit=100&' +
+                                'offset=' + options2.element.offset + '&' +
+                                'sort_by=current_build%3A' + options2.element.sort_by
+                        };
+                        console.error('fetching ' + options2.url + ' ...');
+                        local.ajax(options2, function (error, data) {
                             // validate no error occurred
                             local.assert(!error, error);
-                            local.objectSetOverride(dbRow, JSON.parse(data.responseText));
-                            // ignore extraneous data to save space
-                            dbRow.description = null;
-                            dbRow.last_build_duration = null;
-                            dbRow.last_build_finished_at = null;
-                            dbRow.last_build_id = null;
-                            dbRow.last_build_number = null;
-                            dbRow.last_build_result = null;
-                            dbRow.public_key = null;
-                            dbRow.slug = null;
-                            dbRow.uid = null;
-                            dbRow.url = null;
-                            if (onParallel.counter === 1 || ((onParallel.ii + 1) % 10 === 0 &&
-                                    local.timeElapsedPoll(options).timeElapsed >= 5000)) {
-                                local.timeElapsedStart(options, Date.now());
-                                console.error('dbTableTravisRepoUpdate - updated ' +
-                                    (onParallel.ii + 1) + ' dbRows');
-                            }
+                            dbRowList = dbRowList
+                                .concat(JSON.parse(data.responseText).repositories);
+                            console.error('... fetched ' + options2.url);
                             onParallel();
                         });
                     }, options.onNext);
                     break;
                 case 4:
-                    self.crudSetManyById(dbRowList);
+                    self.crudRemoveManyByQuery({});
+                    self.crudSetManyById(dbRowList
+                        .filter(function (dbRow) {
+                            return dbRow.private === false && dbRow.slug.indexOf(
+                                options.githubOrg + '/node-' + options.githubOrg + '-'
+                            ) === 0;
+                        })
+                        .map(function (dbRow) {
+                            data = dbRow.current_build || {};
+                            return {
+                                _id: dbRow.name.replace('node-' + options.githubOrg + '-', ''),
+                                active: dbRow.active,
+                                buildFinishedAt: data.finished_at,
+                                buildState: data.state
+                            };
+                        }));
                     self.save(options.onNext);
                     break;
                 default:
@@ -13282,7 +13504,7 @@ header: '\
          * this function will if error exists, then print error.stack to stderr
          */
             if (error && !local.global.__coverage__) {
-                console.error(error.stack);
+                console.error(error);
             }
         };
 
@@ -13432,7 +13654,7 @@ header: '\
             ii = -1;
             onParallel.ii = -1;
             onParallel.remaining = options.list.length;
-            options.rateLimit = Number(options.rateLimit) || 4;
+            options.rateLimit = Number(options.rateLimit) || 6;
             options.rateLimit = Math.max(options.rateLimit, 3);
             options.retryLimit = Number(options.retryLimit) || 2;
             onEach2();
@@ -13576,7 +13798,7 @@ header: '\
              */
                 // debug error
                 global.utility2_debugReplError = error;
-                console.error(error.stack);
+                console.error(error);
             };
             // save repl eval function
             self.evalDefault = self.eval;
@@ -13777,7 +13999,7 @@ vendor\\)\\(\\b\\|[_s]\\)\
                 {}
             );
             // coverage-hack
-            local.nop(local.env.npm_package_readmeParse && (function () {
+            local.nop(!local.env.npm_package_buildCustomOrg && (function () {
                 local.fs.readFileSync('README.md', 'utf8').replace(
                     (/```\w*?(\n[\W\s]*?example\.js[\n\"][\S\s]+?)\n```/),
                     function (match0, match1, ii, text) {
@@ -14344,8 +14566,8 @@ instruction\n\
                 options.githubRepo.join('/')
             );
             template = template.replace(
-                (/kaizhu256_2Fnode-jslint-lite/g),
-                options.githubRepo.join('_2F')
+                (/kaizhu256%252Fnode-jslint-lite/g),
+                options.githubRepo.join('%252F')
             );
             template = template.replace(
                 (/node-jslint-lite/g),
@@ -14380,7 +14602,9 @@ instruction\n\
             onError2 = function (error) {
                 // restore mock[0] from mock[2]
                 mockList.reverse().forEach(function (mock) {
-                    local.objectSetOverride(mock[0], mock[2]);
+                    Object.keys(mock[2]).forEach(function (key) {
+                        mock[0][key] = mock[2][key];
+                    });
                 });
                 onError(error);
             };
@@ -14391,10 +14615,17 @@ instruction\n\
                     mock[2] = {};
                     // backup mock[0] into mock[2]
                     Object.keys(mock[1]).forEach(function (key) {
+                        if (typeof process === 'object' &&
+                                process.env === mock[0] &&
+                                mock[0][key] === undefined) {
+                            mock[0][key] = '';
+                        }
                         mock[2][key] = mock[0][key];
                     });
                     // override mock[0] with mock[1]
-                    local.objectSetOverride(mock[0], mock[1]);
+                    Object.keys(mock[1]).forEach(function (key) {
+                        mock[0][key] = mock[1][key];
+                    });
                 });
                 // run onTestCase
                 onTestCase(onError2);
@@ -14691,6 +14922,14 @@ instruction\n\
                 // mock proces.exit
                 exit = process.exit;
                 process.exit = local.nop;
+                /* istanbul ignore next */
+                if (local.env.npm_package_buildCustomOrg) {
+                    local.exportsCustomOrg = {};
+                    local.tryCatchOnError(function () {
+                        local.exportsCustomOrg = require(process.cwd() + '/node_modules/' +
+                            local.env.npm_package_buildCustomOrg);
+                    }, local.onErrorDefault);
+                }
                 break;
             }
             // init modeTestCase
@@ -14737,7 +14976,8 @@ instruction\n\
             // shallow-copy testPlatform.testCaseList to prevent side-effects
             // from in-place sort from testReportMerge
             local.onParallelList({
-                list: testPlatform.testCaseList.slice()
+                list: testPlatform.testCaseList.slice(),
+                rateLimit: Infinity
             }, function (testCase, onParallel) {
                 var onError, timerTimeout;
                 onError = function (error) {
@@ -15072,9 +15312,9 @@ instruction\n\
             npm_package_nameAlias: (local.env.npm_package_name || '').replace((/\W/g), '_')
         });
         local.objectSetDefault(local.env, {
-            npm_package_description: 'example module',
-            npm_package_name: 'example',
-            npm_package_nameAlias: 'example',
+            npm_package_description: 'the greatest app in the world!',
+            npm_package_name: 'my-app',
+            npm_package_nameAlias: 'my_app',
             npm_package_version: '0.0.1'
         });
         local.errorDefault = new Error('default error');
@@ -15084,23 +15324,6 @@ instruction\n\
         local.istanbulInstrumentInPackage = local.istanbul.instrumentInPackage || local.echo;
         local.istanbulInstrumentSync = local.istanbul.instrumentSync || local.echo;
         local.jslintAndPrint = local.jslint.jslintAndPrint || local.echo;
-        local.packageJsonNpmdocDefault = {
-            "buildNpmdoc": "mysql",
-            "devDependencies": {
-                "electron-lite": "kaizhu256/node-electron-lite#alpha",
-                "utility2": "kaizhu256/node-utility2#alpha"
-            },
-            "homepage": "https://github.com/npmdoc/node-npmdoc-mysql",
-            "name": "npmdoc-mysql",
-            "nameOriginal": "npmdoc-mysql",
-            "repository": {
-                "type": "git",
-                "url": "https://github.com/npmdoc/node-npmdoc-mysql.git"
-            },
-            "scripts": {
-                "build-ci": "utility2 shReadmeTest build_ci.sh"
-            }
-        };
         local.regexpEmailValidate = new RegExp(
             '^[a-zA-Z0-9.!#$%&\'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}' +
                 '[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$'
@@ -15337,15 +15560,34 @@ instruction\n\
         case 'browserTest':
             local.browserTest({}, local.exit);
             return;
-        case 'dbTableTravisRepoCrudGetManyByQuery':
-            local.dbTableTravisRepoCreate({}, function () {
-                console.log(JSON.stringify(local.dbTableTravisRepoCrudGetManyByQuery(
-                    JSON.parse(process.argv[3] || '{}')
-                ), null, 4));
+        case 'browserTestList':
+            local.onParallelList({
+                list: process.argv[3].split(/\s+/).filter(function (element) {
+                    return element;
+                })
+            }, function (options, onParallel) {
+                onParallel.counter += 1;
+                local.browserTest({ url: options.element }, function () {
+                    onParallel();
+                });
+            }, local.exit);
+            return;
+        case 'dbTableTravisOrgCrudGetManyByQuery':
+            local.dbTableTravisOrgCreate(JSON.parse(process.argv[3]), function (error, data) {
+                // validate no error occurred
+                local.assert(!error, error);
+                console.log(data.crudGetManyByQuery(JSON.parse(process.argv[3]))
+                    .map(function (element) {
+                        return element._id;
+                    })
+                    .join('\n'));
             });
             return;
-        case 'dbTableTravisRepoUpdate':
-            local.dbTableTravisRepoUpdate(JSON.parse(process.argv[3] || '{}'), local.exit);
+        case 'dbTableTravisOrgUpdate':
+            local.dbTableTravisOrgUpdate(
+                JSON.parse(process.argv[3]),
+                local.onErrorThrow
+            );
             return;
         case 'onParallelListSpawn':
             local.onParallelList({
@@ -15365,7 +15607,7 @@ instruction\n\
                         ' of ' + options.list.length + '] exitCode ' + exitCode);
                     onParallel(exitCode && new Error(exitCode), options);
                 });
-            }, local.exit);
+            }, local.onErrorThrow);
             return;
         }
         // init lib
