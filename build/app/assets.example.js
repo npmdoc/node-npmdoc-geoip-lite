@@ -291,14 +291,15 @@ utility2-comment -->\n\
         local.assetsDict['/assets.example.js'] =
             local.assetsDict['/assets.example.js'] ||
             local.fs.readFileSync(__filename, 'utf8');
+        // bug-workaround - long $npm_package_buildCustomOrg
+        /* jslint-ignore-begin */
         local.assetsDict['/assets.npmdoc_geoip_lite.rollup.js'] =
             local.assetsDict['/assets.npmdoc_geoip_lite.rollup.js'] ||
             local.fs.readFileSync(
-                // buildCustomOrg-hack
-                local.npmdoc_geoip_lite.__dirname +
-                    '/lib.npmdoc_geoip_lite.js',
+                local.npmdoc_geoip_lite.__dirname + '/lib.npmdoc_geoip_lite.js',
                 'utf8'
             ).replace((/^#!/), '//');
+        /* jslint-ignore-end */
         local.assetsDict['/favicon.ico'] = local.assetsDict['/favicon.ico'] || '';
         // if $npm_config_timeout_exit exists,
         // then exit this process after $npm_config_timeout_exit ms

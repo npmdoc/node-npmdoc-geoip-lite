@@ -48,7 +48,7 @@
         // re-init local from example.js
         case 'node':
             local = (local.global.utility2_rollup || require('utility2'))
-                .requireExampleJsFromReadme();
+                .requireReadme();
             break;
         }
         // export local
@@ -88,6 +88,16 @@
 
     // run browser js-env code - post-init
     case 'browser':
+        local.testCase_browser_nullCase = local.testCase_browser_nullCase || function (
+            options,
+            onError
+        ) {
+        /*
+         * this function will test browsers's null-case handling-behavior-behavior
+         */
+            onError(null, options);
+        };
+
         // run tests
         local.nop(local.modeTest &&
             document.querySelector('#testRunButton1') &&
